@@ -1,0 +1,92 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: payment-service-feign-apache
+
+services:
+  # HTTPS endpoints — account/customer services require mTLS
+  account-service:
+    url: https://localhost:8443
+  customer-service:
+    url: https://localhost:8453
+
+# ── mTLS Client Configuration ─────────────────────────────────────────────────
+# Loaded by MtlsProperties and used in ApacheHttpClientConfig.
+#
+# keystore   = OUR certificate (client.p12) — we present this to servers
+# truststore = CAs we TRUST (truststore.jks) — used to verify server certs
+#
+# In production: use Azure Key Vault references, not classpath files.
+# Azure Key Vault ref format: ${AZURE_KEYVAULT_CERT_URI}
+mtls:
+  keystore:
+    path:     classpath:certs/client.p12
+    password: changeit
+    type:     PKCS12
+  truststore:
+    path:     classpath:certs/truststore.jks
+    password: changeit
+    type:     JKS
+  # DEV ONLY — disable hostname verification for self-signed localhost certs
+  # Set to false in production — never disable in production
+  disable-hostname-verification: true
+
+# ── Feign Configuration ────────────────────────────────────────────────────────
+feign:
+  circuitbreaker:
+    enabled: true
+  client:
+    config:
+      # Global defaults (applies to all clients)
+      default:
+        connectTimeout: 3000
+        readTimeout:    5000
+        loggerLevel:    FULL
+      # Per-client overrides
+      account-service:
+        connectTimeout: 2000
+        readTimeout:    4000
+      customer-service:
+        connectTimeout: 2000
+        readTimeout:    4000
+  # Apache HC5 is enabled via the ApacheHttp5Client bean — no YAML config needed
+  httpclient:
+    hc5:
+      enabled: true
+    # Disable default OK HTTP if on classpath (avoid conflicts)
+    ok-http:
+      enabled: false
+
+# ── Resilience4j ──────────────────────────────────────────────────────────────
+resilience4j:
+  circuitbreaker:
+    instances:
+      payment-processing:
+        slidingWindowSize:                     10
+        failureRateThreshold:                  50    # open if 50% of last 10 calls fail
+        waitDurationInOpenState:               10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        recordExceptions:
+          - com.banking.payment.exception.ServiceUnavailableException
+          - feign.RetryableException
+        ignoreExceptions:
+          # Don't count business errors as circuit breaker failures
+          - com.banking.payment.exception.InsufficientFundsException
+          - com.banking.payment.exception.DuplicatePaymentException
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,circuitbreakers
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.banking:                  DEBUG
+    feign:                        DEBUG
+    org.apache.hc:                DEBUG   # shows Apache HC5 connection pool activity

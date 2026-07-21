@@ -1,0 +1,42 @@
+server:
+  port: 8443
+
+  # ── mTLS Server Configuration ─────────────────────────────────────────────
+  # This is what makes the server require a client certificate.
+  # client-auth: need  = reject any connection that doesn't present a valid cert.
+  # client-auth: want  = request cert but allow connections without one.
+  # client-auth: none  = don't request cert (standard TLS, not mTLS).
+  ssl:
+    enabled: true
+
+    # Server's own certificate + private key — proves server identity to client
+    key-store:          classpath:certs/server.p12
+    key-store-password: changeit
+    key-store-type:     PKCS12
+    key-alias:          server
+
+    # Certificates the server TRUSTS — client must be signed by one of these CAs
+    trust-store:          classpath:certs/truststore.jks
+    trust-store-password: changeit
+    trust-store-type:     JKS
+
+    # CRITICAL — this is what makes it mTLS (mutual TLS)
+    # 'need' = client cert is mandatory, connection rejected without it
+    client-auth: need
+
+    protocol:          TLS
+    enabled-protocols: TLSv1.3,TLSv1.2
+
+spring:
+  application:
+    name: account-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+logging:
+  level:
+    com.banking: DEBUG
+    org.springframework.web: DEBUG
